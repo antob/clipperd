@@ -116,20 +116,25 @@ async fn cmd_setup(
         let certs = daemon::tls::generate_certs(&hostname, bind_addr, &cert_name)?;
         let fingerprint = daemon::tls::cert_fingerprint(&certs.ca_cert_pem)?;
 
-        // Preserve the token across a re-setup so iOS Shortcuts don't need re-pairing.
-        let token = existing
-            .as_ref()
-            .map(|c| c.token.clone())
-            .unwrap_or_else(|| hex::encode(rand::rng().random::<[u8; 32]>()));
+        // Preserve how the token was configured across a re-setup (inline value
+        // or external token_file) so iOS Shortcuts stay valid and externalized
+        // tokens are never de-externalized or rotated. Only a first-time setup
+        // generates a fresh random inline token.
+        let (token, token_file) = match &existing {
+            Some(c) => (c.token.clone(), c.token_file.clone()),
+            None => (Some(hex::encode(rand::rng().random::<[u8; 32]>())), None),
+        };
 
         let cfg = config::Config {
             token,
+            token_file,
             port,
             bind_ip: bind_ip.map(|ip| ip.to_string()),
             cert_names: cert_name.clone(),
             cert_pem: certs.cert_pem.clone(),
-            key_pem: certs.key_pem.clone(),
+            key_pem: Some(certs.key_pem.clone()),
             ca_cert_pem: certs.ca_cert_pem.clone(),
+            key_pem_file: None,
         };
         cfg.save()?;
 
@@ -159,8 +164,11 @@ async fn cmd_setup(
     println!();
 
     // The setup server, QR, and Shortcuts all share the same host (the bind
-    // IP or the detected fallback), so they can never disagree.
-    let setup_state = setup::build_setup_state(&cfg.ca_cert_pem, &cfg.token, cfg.port, &host)?;
+    // IP or the detected fallback), so they can never disagree. The token uses
+    // the effective value so an externalized token_file stays in sync with the
+    // daemon.
+    let token = cfg.effective_token()?;
+    let setup_state = setup::build_setup_state(&cfg.ca_cert_pem, &token, cfg.port, &host)?;
 
     let port = cfg.port;
     let setup_url = format!("http://{}:{}/setup", host, port);

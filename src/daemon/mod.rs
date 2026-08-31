@@ -17,16 +17,20 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         clipboard::poll_clipboard(state_clone).await;
     });
 
+    // The effective key and token: external files when configured, else inline.
+    let key_pem = config.effective_key_pem()?;
+    let token = config.effective_token()?;
+
     let app_state = AppState {
         clipboard: clipboard_state,
-        token: config.token.clone(),
+        token,
     };
 
     server::run_https_server(
         app_state,
         config.port,
         &config.cert_pem,
-        &config.key_pem,
+        &key_pem,
         config.bind_ip.clone(),
     )
     .await?;

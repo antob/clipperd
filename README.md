@@ -110,9 +110,52 @@ clipperd status   Show configuration and certificate info
 
 Options for `setup`:
 ```
---port <PORT>    Port to listen on (default: 7171)
---bind-all       Bind to 0.0.0.0 instead of LAN IP
+--port <PORT>            Port to listen on (default: 7171)
+--bind-ip <IP>           IP the daemon and setup server bind to, and that the
+                         iPhone connects to. Defaults to the auto-detected LAN
+                         IP. Also embedded in the server certificate.
+--cert-name <NAME>       Certificate identity (repeatable). Sets the cert CN and
+                         adds each name as an extra SAN. May be a hostname or an
+                         IP. Defaults to the detected LAN IP when omitted.
 ```
+
+> `--bind-ip` replaces the old `--bind-all` flag and rejects `0.0.0.0` (there is
+> no single connection address for your iPhone). Re-running setup with either
+> flag regenerates the certificate but keeps your existing token, so iOS
+> Shortcuts don't need to be rebuilt.
+
+## Configuration
+
+Your credentials live in `~/.config/clipperd/config.toml` (mode `0600`),
+including the auth token, TLS key, and certificate. A number of fields are
+optional so you can keep secrets in separate files if you prefer:
+
+```toml
+# Base settings
+port = 7171                 # TCP port (default)
+
+# Where to bind. Omit to auto-detect the LAN IP.
+bind_ip = "192.168.1.50"
+
+# TLS identity. Omit to fall back to the detected LAN IP.
+cert_names = ["mybox.lan", "other.lan"]
+
+# Auth token: either inline...
+token = "hex-token-string"
+# ...or read from a file (trimmed). If both are set, the file wins.
+token_file = "/run/secrets/clipperd_api_token"
+
+# Private key: either inline...  (omitted on a file-backed setup)
+key_pem = "-----BEGIN PRIVATE KEY----- ..."
+# ...or read from a PKCS#8 PEM file. If both are set, the file wins.
+key_pem_file = "/run/secrets/clipperd_server.key"
+```
+
+Relative paths for `token_file` and `key_pem_file` resolve against
+`~/.config/clipperd/`. Externalized tokens and keys are read-only: clipperd
+never writes to those files and never rotates an externalized token. A path that
+is configured but unreadable is a hard startup error rather than a silent
+fallback to the inline value.
 
 ## Security
 
