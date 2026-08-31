@@ -27,7 +27,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         config.port,
         &config.cert_pem,
         &config.key_pem,
-        config.bind_local_only,
+        config.bind_ip.clone(),
     )
     .await?;
 

@@ -141,7 +141,7 @@ pub async fn run_https_server(
     port: u16,
     cert_pem: &str,
     key_pem: &str,
-    bind_local_only: bool,
+    bind_ip: Option<String>,
 ) -> anyhow::Result<()> {
     let tls_config = RustlsConfig::from_pem(
         cert_pem.as_bytes().to_vec(),
@@ -151,10 +151,14 @@ pub async fn run_https_server(
 
     let app = build_app(state);
 
-    let ip: std::net::IpAddr = if bind_local_only {
-        local_ip_address::local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap())
+    let ip: std::net::IpAddr = if let Some(s) = bind_ip {
+        let ip: std::net::IpAddr = s
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid bind_ip in config: {}", s))?;
+        ensure_local_ip(ip)?;
+        ip
     } else {
-        "0.0.0.0".parse().unwrap()
+        local_ip_address::local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap())
     };
 
     let addr = SocketAddr::new(ip, port);
@@ -167,11 +171,34 @@ pub async fn run_https_server(
     Ok(())
 }
 
+/// Fail fast if an explicitly configured bind IP isn't assigned to a local
+/// interface. Binding will otherwise just error later with a cryptic EADDRNOTAVAIL.
+fn ensure_local_ip(ip: std::net::IpAddr) -> anyhow::Result<()> {
+    let addr = SocketAddr::new(ip, 0);
+    std::net::TcpListener::bind(addr).map_err(|e| {
+        anyhow::anyhow!(
+            "Configured bind IP {} is not available on this machine ({}). ",
+            ip,
+            e
+        )
+    })?;
+    Ok(())
+}
+
 pub async fn run_setup_server(
     port: u16,
     setup_routes: Router,
+    bind_ip: Option<String>,
 ) -> anyhow::Result<()> {
-    let ip = local_ip_address::local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
+    let ip: std::net::IpAddr = if let Some(s) = bind_ip {
+        let ip: std::net::IpAddr = s
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid bind_ip in config: {}", s))?;
+        ensure_local_ip(ip)?;
+        ip
+    } else {
+        local_ip_address::local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap())
+    };
     let addr = SocketAddr::new(ip, port);
     info!("Setup HTTP server on http://{}", addr);
 

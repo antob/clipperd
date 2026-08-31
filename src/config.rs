@@ -5,12 +5,18 @@ use std::path::PathBuf;
 pub struct Config {
     pub token: String,
     pub port: u16,
-    pub bind_local_only: bool,
     pub cert_pem: String,
     pub key_pem: String,
     pub ca_cert_pem: String,
-    /// LAN IP that was embedded in the server cert's SAN at setup time
-    pub cert_ip: String,
+    /// Optional explicit IP the daemon and setup server should bind to, and the
+    /// address used in the QR / setup URL / iOS Shortcuts. When unset, the
+    /// daemon auto-detects the LAN IP.
+    #[serde(default)]
+    pub bind_ip: Option<String>,
+    /// Certificate identity: the CN and any additional SANs (hostnames and/or
+    /// IPs). Empty means fall back to the detected LAN IP as the cert identity.
+    #[serde(default)]
+    pub cert_names: Vec<String>,
 }
 
 impl Config {

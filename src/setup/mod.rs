@@ -161,14 +161,15 @@ fn render_setup_html(state: &SetupState) -> String {
     )
 }
 
+/// `host` is the address the iPhone should reach (the bind IP, or the detected
+/// LAN IP if unset). It drives the iOS Shortcut host URLs.
 pub fn build_setup_state(
     ca_cert_pem: &str,
     token: &str,
     port: u16,
+    host: &str,
 ) -> anyhow::Result<SetupState> {
-    let ip = local_ip_address::local_ip()
-        .unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
-    let host_url = format!("https://{}:{}", ip, port);
+    let host_url = format!("https://{}:{}", host, port);
 
     let mobileconfig = mobileconfig::generate_mobileconfig(ca_cert_pem)?;
     let fingerprint = cert_fingerprint(ca_cert_pem)?;
