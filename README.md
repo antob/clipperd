@@ -117,6 +117,9 @@ Options for `setup`:
 --cert-name <NAME>       Certificate identity (repeatable). Sets the cert CN and
                          adds each name as an extra SAN. May be a hostname or an
                          IP. Defaults to the detected LAN IP when omitted.
+--dry-run                Print the config setup would generate to stdout and
+                         exit. Nothing is written to disk and the setup server
+                         is not started.
 ```
 
 > `--bind-ip` replaces the old `--bind-all` flag and rejects `0.0.0.0` (there is

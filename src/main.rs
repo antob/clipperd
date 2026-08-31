@@ -36,6 +36,11 @@ enum Commands {
         /// Defaults to the detected LAN IP when omitted.
         #[arg(long, action = clap::ArgAction::Append)]
         cert_name: Vec<String>,
+
+        /// Print the config that setup would generate to stdout and exit,
+        /// without writing anything to disk or starting the setup server.
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
 
     /// Run the clipboard sync daemon
@@ -65,7 +70,8 @@ async fn main() -> anyhow::Result<()> {
             port,
             bind_ip,
             cert_name,
-        } => cmd_setup(port, bind_ip, cert_name).await,
+            dry_run,
+        } => cmd_setup(port, bind_ip, cert_name, dry_run).await,
         Commands::Run => cmd_run().await,
         Commands::Status => cmd_status(),
     }
@@ -75,6 +81,7 @@ async fn cmd_setup(
     port: u16,
     bind_ip: Option<std::net::IpAddr>,
     cert_name: Vec<String>,
+    dry_run: bool,
 ) -> anyhow::Result<()> {
     // Reject unspecified addresses: they are unusable as a connect host for the
     // iPhone and would produce a mismatch between the bind and the cert/QR.
@@ -111,7 +118,9 @@ async fn cmd_setup(
     let host = bind_addr.to_string();
 
     let (cfg, fingerprint) = if !configured || regenerate {
-        println!("🔐 Generating keys and certificate...");
+        if !dry_run {
+            println!("🔐 Generating keys and certificate...");
+        }
 
         let certs = daemon::tls::generate_certs(&hostname, bind_addr, &cert_name)?;
         let fingerprint = daemon::tls::cert_fingerprint(&certs.ca_cert_pem)?;
@@ -136,28 +145,44 @@ async fn cmd_setup(
             ca_cert_pem: certs.ca_cert_pem.clone(),
             key_pem_file: None,
         };
-        cfg.save()?;
 
-        println!("✅ Config saved to {}", config::Config::config_path().display());
-        println!();
-        println!("🌐 Bind address: {}", host);
-        if !cert_name.is_empty() {
-            println!("   Cert names: {}", cert_name.join(", "));
+        if !dry_run {
+            cfg.save()?;
+            println!(
+                "✅ Config saved to {}",
+                config::Config::config_path().display()
+            );
+            println!();
+            println!("🌐 Bind address: {}", host);
+            if !cert_name.is_empty() {
+                println!("   Cert names: {}", cert_name.join(", "));
+            }
+            println!();
         }
-        println!();
 
         (cfg, fingerprint)
     } else {
-        println!("ℹ  Config already exists — reusing existing keys and token.");
-        println!(
-            "   (Delete {} to generate fresh credentials.)",
-            config::Config::config_path().display()
-        );
-        println!();
+        if !dry_run {
+            println!("ℹ  Config already exists — reusing existing keys and token.");
+            println!(
+                "   (Delete {} to generate fresh credentials.)",
+                config::Config::config_path().display()
+            );
+            println!();
+        }
         let cfg = existing.expect("configured checked");
         let fingerprint = daemon::tls::cert_fingerprint(&cfg.ca_cert_pem)?;
         (cfg, fingerprint)
     };
+
+    // Dry run: emit the config that setup would produce and exit without
+    // writing to disk or starting the setup server. Only the serialized config
+    // goes to stdout so it can be piped or redirected cleanly.
+    if dry_run {
+        let toml_str = toml::to_string_pretty(&cfg)?;
+        print!("{}", toml_str);
+        return Ok(());
+    }
 
     println!("📱 CA Certificate Fingerprint:");
     println!("   {}", fingerprint);
